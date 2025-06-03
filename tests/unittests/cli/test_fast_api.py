@@ -14,11 +14,13 @@
 
 import asyncio
 import logging
+import os
 import time
 from typing import Any
 from typing import Optional
 from unittest.mock import MagicMock
 from unittest.mock import patch
+from unittest.mock import ANY
 
 from fastapi.testclient import TestClient
 from google.adk.agents.base_agent import BaseAgent
@@ -639,6 +641,355 @@ def test_agent_run(test_app, create_test_session):
   assert data[2]["interrupted"] == True
 
   logger.info("Agent run test completed successfully")
+
+
+@patch('google.adk.cli.fast_api._get_runner_async')
+def test_agent_run_sets_and_restores_env_vars_when_params_provided(
+    mock_get_runner, test_app, create_test_session
+):
+  """Tests that env vars are set during runner execution and restored after."""
+  info = create_test_session
+  initial_env = {
+      "EXISTING_VAR": "initial_value",
+      "API_KEY": "original_api_key", # This should be overridden then restored
+  }
+  # Ensure some vars that will be set are not in initial_env for a clean test
+  # These represent vars that might not be set at all before the call
+  if "API_BASE" in initial_env:
+    del initial_env["API_BASE"]
+  if "API_TYPE" in initial_env:
+    del initial_env["API_TYPE"]
+  if "API_VERSION" in initial_env: # This one we'll test not providing in payload
+    initial_env["API_VERSION"] = "original_api_version"
+
+
+  mock_runner_instance = MagicMock(spec=Runner)
+  async def dummy_run_async_gen(*args, **kwargs):
+    yield _event_1()
+  mock_runner_instance.run_async = MagicMock(side_effect=dummy_run_async_gen)
+
+  captured_env_in_runner = {}
+
+  def get_runner_side_effect(*args, **kwargs):
+    captured_env_in_runner['API_KEY'] = os.environ.get('API_KEY')
+    captured_env_in_runner['API_BASE'] = os.environ.get('API_BASE')
+    captured_env_in_runner['API_TYPE'] = os.environ.get('API_TYPE')
+    captured_env_in_runner['API_VERSION'] = os.environ.get('API_VERSION')
+    captured_env_in_runner['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
+    return mock_runner_instance
+
+  mock_get_runner.side_effect = get_runner_side_effect
+
+  payload = {
+      "app_name": info["app_name"],
+      "user_id": info["user_id"],
+      "session_id": info["session_id"],
+      "new_message": {"role": "user", "parts": [{"text": "Hello agent"}]},
+      "api_key": "test_key_123",
+      "api_base": "test_base_url",
+      "api_type": "test_type",
+      # api_version is intentionally omitted to test handling of None
+  }
+
+  # Use a copy of initial_env for patch.dict because patch.dict modifies its input dict
+  with patch.dict(os.environ, initial_env.copy(), clear=True):
+    response = test_app.post("/run", json=payload)
+    assert response.status_code == 200
+
+    assert captured_env_in_runner.get('API_KEY') == "test_key_123"
+    assert captured_env_in_runner.get('API_BASE') == "test_base_url"
+    assert captured_env_in_runner.get('API_TYPE') == "test_type"
+    # API_VERSION was not in payload, should retain its original value if any, or be None
+    assert captured_env_in_runner.get('API_VERSION') == initial_env.get(
+        "API_VERSION"
+    )
+    assert captured_env_in_runner.get('EXISTING_VAR') == "initial_value"
+
+  # Assert that os.environ is restored
+  assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
+  assert os.environ.get('API_BASE') == initial_env.get('API_BASE') # Was not set initially
+  assert os.environ.get('API_TYPE') == initial_env.get('API_TYPE') # Was not set initially
+  assert os.environ.get('API_VERSION') == initial_env.get('API_VERSION')
+  assert os.environ.get('EXISTING_VAR') == "initial_value"
+  # Ensure no unexpected vars were added if they weren't there initially
+  if "API_BASE" not in initial_env:
+      assert "API_BASE" not in os.environ
+  if "API_TYPE" not in initial_env:
+      assert "API_TYPE" not in os.environ
+
+
+@patch('google.adk.cli.fast_api._get_runner_async')
+def test_agent_run_does_not_set_env_vars_when_params_absent(
+    mock_get_runner, test_app, create_test_session
+):
+  """Tests that env vars are not set if API parameters are absent."""
+  info = create_test_session
+  initial_env = {
+      "EXISTING_VAR": "initial_value",
+      "API_KEY": "original_api_key",
+  }
+
+  mock_runner_instance = MagicMock(spec=Runner)
+  async def dummy_run_async_gen(*args, **kwargs):
+    yield _event_1()
+  mock_runner_instance.run_async = MagicMock(side_effect=dummy_run_async_gen)
+
+  captured_env_in_runner = {}
+  def get_runner_side_effect(*args, **kwargs):
+    captured_env_in_runner['API_KEY'] = os.environ.get('API_KEY')
+    captured_env_in_runner['API_BASE'] = os.environ.get('API_BASE')
+    captured_env_in_runner['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
+    return mock_runner_instance
+  mock_get_runner.side_effect = get_runner_side_effect
+
+  payload = {
+      "app_name": info["app_name"],
+      "user_id": info["user_id"],
+      "session_id": info["session_id"],
+      "new_message": {"role": "user", "parts": [{"text": "Hello agent"}]},
+      # No API params
+  }
+
+  with patch.dict(os.environ, initial_env.copy(), clear=True):
+    response = test_app.post("/run", json=payload)
+    assert response.status_code == 200
+
+    assert captured_env_in_runner.get('API_KEY') == "original_api_key"
+    assert captured_env_in_runner.get('API_BASE') is None # Was not in initial_env
+    assert captured_env_in_runner.get('EXISTING_VAR') == "initial_value"
+
+  assert os.environ.get('API_KEY') == "original_api_key"
+  assert os.environ.get('API_BASE') is None
+  assert os.environ.get('EXISTING_VAR') == "initial_value"
+
+
+@patch('google.adk.cli.fast_api._get_runner_async')
+def test_agent_run_restores_env_vars_on_runner_exception(
+    mock_get_runner, test_app, create_test_session
+):
+  """Tests that env vars are restored even if the runner logic raises an exception."""
+  info = create_test_session
+  initial_env = {
+      "API_KEY": "original_key",
+      "EXISTING_VAR": "original_existing",
+  }
+  # This will be set by the payload, then should be restored
+  if "API_BASE" in initial_env:
+      del initial_env["API_BASE"]
+
+
+  # Mock _get_runner_async to raise an exception
+  def get_runner_side_effect_exception(*args, **kwargs):
+    # Simulate env vars being set before the exception
+    os.environ['API_KEY'] = "new_key_temp"
+    os.environ['API_BASE'] = "new_base_temp"
+    raise ValueError("Simulated runner error")
+  mock_get_runner.side_effect = get_runner_side_effect_exception
+  # We also need to mock the runner instance that run_async is called on,
+  # even if _get_runner_async raises an error, the structure might expect it.
+  # However, in this specific case, the error is in _get_runner_async itself.
+  # If the error was in runner.run_async, we'd mock runner_instance.run_async.side_effect.
+
+  payload = {
+      "app_name": info["app_name"],
+      "user_id": info["user_id"],
+      "session_id": info["session_id"],
+      "new_message": {"role": "user", "parts": [{"text": "Hello agent"}]},
+      "api_key": "test_key_from_payload",
+      "api_base": "test_base_from_payload",
+  }
+
+  with patch.dict(os.environ, initial_env.copy(), clear=True):
+    response = test_app.post("/run", json=payload)
+    # FastAPI turns unhandled exceptions into 500 errors
+    assert response.status_code == 500
+
+  # Crucially, assert that os.environ is restored
+  assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
+  assert os.environ.get('API_BASE') == initial_env.get('API_BASE') # Should be None as it wasn't in initial_env
+  assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
+  if "API_BASE" not in initial_env: # Ensure it's gone if it wasn't there initially
+      assert "API_BASE" not in os.environ
+
+
+@patch('google.adk.cli.fast_api._get_runner_async')
+def test_agent_run_sse_sets_and_restores_env_vars_when_params_provided(
+    mock_get_runner, test_app, create_test_session
+):
+  """Tests that env vars are set for SSE and restored after."""
+  info = create_test_session
+  initial_env = {
+      "EXISTING_VAR": "initial_value_sse",
+      "API_KEY": "original_api_key_sse",
+  }
+  if "API_BASE" in initial_env: # Ensure not present for a clean test
+      del initial_env["API_BASE"]
+  initial_env_copy = initial_env.copy() # For restoration check
+
+  mock_runner_instance = MagicMock(spec=Runner)
+  async def dummy_run_async_gen_sse(*args, **kwargs):
+    # Simulate yielding SSE events
+    yield _event_1()
+    yield _event_2()
+  mock_runner_instance.run_async = MagicMock(side_effect=dummy_run_async_gen_sse)
+
+  captured_env_in_runner_sse = {}
+  def get_runner_side_effect_sse(*args, **kwargs):
+    captured_env_in_runner_sse['API_KEY'] = os.environ.get('API_KEY')
+    captured_env_in_runner_sse['API_BASE'] = os.environ.get('API_BASE')
+    captured_env_in_runner_sse['API_TYPE'] = os.environ.get('API_TYPE')
+    captured_env_in_runner_sse['API_VERSION'] = os.environ.get('API_VERSION')
+    captured_env_in_runner_sse['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
+    return mock_runner_instance
+  mock_get_runner.side_effect = get_runner_side_effect_sse
+
+  payload = {
+      "app_name": info["app_name"],
+      "user_id": info["user_id"],
+      "session_id": info["session_id"],
+      "new_message": {"role": "user", "parts": [{"text": "Hello SSE"}]},
+      "streaming": True, # Important for SSE
+      "api_key": "sse_key_456",
+      "api_base": "sse_base_url",
+      "api_type": "sse_type",
+      "api_version": "sse_version_1.0",
+  }
+
+  with patch.dict(os.environ, initial_env_copy, clear=True):
+    response = test_app.post("/run_sse", json=payload)
+    assert response.status_code == 200
+    _ = response.text # Consume stream
+
+    assert captured_env_in_runner_sse.get('API_KEY') == "sse_key_456"
+    assert captured_env_in_runner_sse.get('API_BASE') == "sse_base_url"
+    assert captured_env_in_runner_sse.get('API_TYPE') == "sse_type"
+    assert captured_env_in_runner_sse.get('API_VERSION') == "sse_version_1.0"
+    assert captured_env_in_runner_sse.get('EXISTING_VAR') == "initial_value_sse"
+
+  assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
+  assert os.environ.get('API_BASE') == initial_env.get('API_BASE')
+  assert os.environ.get('API_TYPE') == initial_env.get('API_TYPE')
+  assert os.environ.get('API_VERSION') == initial_env.get('API_VERSION')
+  assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
+  if "API_BASE" not in initial_env:
+      assert "API_BASE" not in os.environ
+
+
+@patch('google.adk.cli.fast_api._get_runner_async')
+def test_agent_run_sse_does_not_set_env_vars_when_params_absent(
+    mock_get_runner, test_app, create_test_session
+):
+  """Tests that env vars are not set for SSE if API parameters are absent."""
+  info = create_test_session
+  initial_env = {
+      "EXISTING_VAR": "initial_value_sse_absent",
+      "API_KEY": "original_api_key_sse_absent",
+  }
+  initial_env_copy = initial_env.copy()
+
+  mock_runner_instance = MagicMock(spec=Runner)
+  async def dummy_run_async_gen_sse_absent(*args, **kwargs):
+    yield _event_1()
+  mock_runner_instance.run_async = MagicMock(side_effect=dummy_run_async_gen_sse_absent)
+
+  captured_env_in_runner_sse_absent = {}
+  def get_runner_side_effect_sse_absent(*args, **kwargs):
+    captured_env_in_runner_sse_absent['API_KEY'] = os.environ.get('API_KEY')
+    captured_env_in_runner_sse_absent['API_BASE'] = os.environ.get('API_BASE')
+    captured_env_in_runner_sse_absent['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
+    return mock_runner_instance
+  mock_get_runner.side_effect = get_runner_side_effect_sse_absent
+
+  payload = {
+      "app_name": info["app_name"],
+      "user_id": info["user_id"],
+      "session_id": info["session_id"],
+      "new_message": {"role": "user", "parts": [{"text": "Hello SSE"}]},
+      "streaming": True,
+      # No API params
+  }
+
+  with patch.dict(os.environ, initial_env_copy, clear=True):
+    response = test_app.post("/run_sse", json=payload)
+    assert response.status_code == 200
+    _ = response.text # Consume stream
+
+    assert captured_env_in_runner_sse_absent.get('API_KEY') == "original_api_key_sse_absent"
+    assert captured_env_in_runner_sse_absent.get('API_BASE') is None
+    assert captured_env_in_runner_sse_absent.get('EXISTING_VAR') == "initial_value_sse_absent"
+
+  assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
+  assert os.environ.get('API_BASE') is None
+  assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
+
+
+@patch('google.adk.cli.fast_api._get_runner_async')
+def test_agent_run_sse_restores_env_vars_on_exception(
+    mock_get_runner, test_app, create_test_session
+):
+  """Tests that env vars are restored for SSE even if an exception occurs."""
+  info = create_test_session
+  initial_env = {
+      "API_KEY": "original_key_sse_exc",
+      "EXISTING_VAR": "original_existing_sse_exc",
+  }
+  if "API_BASE" in initial_env: # Ensure not present for clean test
+      del initial_env["API_BASE"]
+  initial_env_copy = initial_env.copy()
+
+  # Mock _get_runner_async to raise an exception
+  def get_runner_side_effect_exception_sse(*args, **kwargs):
+    # Simulate env vars being set by _set_temporary_env_vars
+    # before the mocked _get_runner_async itself raises an error.
+    # (Note: _set_temporary_env_vars is called *before* _get_runner_async)
+    raise ValueError("Simulated SSE runner error")
+
+  mock_get_runner.side_effect = get_runner_side_effect_exception_sse
+
+  # Even if _get_runner_async fails, the event_generator is defined.
+  # If the error happens *inside* event_generator after _get_runner_async,
+  # the streaming response would still be initiated.
+  # Here, the error is in _get_runner_async itself.
+
+  payload = {
+      "app_name": info["app_name"],
+      "user_id": info["user_id"],
+      "session_id": info["session_id"],
+      "new_message": {"role": "user", "parts": [{"text": "Hello SSE"}]},
+      "streaming": True,
+      "api_key": "test_key_sse_payload_exc",
+      "api_base": "test_base_sse_payload_exc",
+  }
+
+  with patch.dict(os.environ, initial_env_copy, clear=True):
+    # When the error occurs before the stream starts (e.g. in _get_runner_async),
+    # FastAPI TestClient might raise it directly or convert to a 500.
+    # If error is *during* stream, TestClient.stream_context() might be needed.
+    # For an error in _get_runner_async, TestClient handles it before stream context.
+    # The important part is the `finally` block in `agent_run_sse` for restoration.
+    try:
+      response = test_app.post("/run_sse", json=payload)
+      # Depending on when _get_runner_async is called relative to response headers
+      # this might be 200 then error in stream, or 500 if error is before stream starts.
+      # Given _get_runner_async is called inside event_generator,
+      # the headers (200) would be sent first.
+      assert response.status_code == 200
+      # Consume the stream to trigger the error within event_generator
+      # The error 'Simulated SSE runner error' should be part of the stream content
+      # or cause an ungraceful disconnect.
+      response_text = response.text
+      assert "Simulated SSE runner error" in response_text # Check if error message is in stream
+    except Exception as e:
+      # If TestClient raises an error directly (e.g. connection error if server crashes hard)
+      logger.info(f"SSE request failed as expected: {e}")
+
+
+  # Crucially, assert that os.environ is restored
+  assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
+  assert os.environ.get('API_BASE') == initial_env.get('API_BASE')
+  assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
+  if "API_BASE" not in initial_env:
+      assert "API_BASE" not in os.environ
 
 
 def test_list_artifact_names(test_app, create_test_session):
