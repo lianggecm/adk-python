@@ -657,10 +657,10 @@ def test_agent_run_sets_and_restores_env_vars_when_params_provided(
   # These represent vars that might not be set at all before the call
   if "API_BASE" in initial_env:
     del initial_env["API_BASE"]
-  if "API_TYPE" in initial_env:
-    del initial_env["API_TYPE"]
-  if "API_VERSION" in initial_env: # This one we'll test not providing in payload
-    initial_env["API_VERSION"] = "original_api_version"
+  if "MODEL_TYPE" in initial_env: # Changed from API_TYPE
+    del initial_env["MODEL_TYPE"]
+  if "MODEL_NAME" in initial_env: # Changed from API_VERSION
+    initial_env["MODEL_NAME"] = "original_model_name" # Changed from original_api_version
 
 
   mock_runner_instance = MagicMock(spec=Runner)
@@ -673,8 +673,8 @@ def test_agent_run_sets_and_restores_env_vars_when_params_provided(
   def get_runner_side_effect(*args, **kwargs):
     captured_env_in_runner['API_KEY'] = os.environ.get('API_KEY')
     captured_env_in_runner['API_BASE'] = os.environ.get('API_BASE')
-    captured_env_in_runner['API_TYPE'] = os.environ.get('API_TYPE')
-    captured_env_in_runner['API_VERSION'] = os.environ.get('API_VERSION')
+    captured_env_in_runner['MODEL_TYPE'] = os.environ.get('MODEL_TYPE') # Changed
+    captured_env_in_runner['MODEL_NAME'] = os.environ.get('MODEL_NAME') # Changed
     captured_env_in_runner['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
     return mock_runner_instance
 
@@ -687,8 +687,8 @@ def test_agent_run_sets_and_restores_env_vars_when_params_provided(
       "new_message": {"role": "user", "parts": [{"text": "Hello agent"}]},
       "api_key": "test_key_123",
       "api_base": "test_base_url",
-      "api_type": "test_type",
-      # api_version is intentionally omitted to test handling of None
+      "model_type": "test_type", # Changed
+      # model_name is intentionally omitted to test handling of None
   }
 
   # Use a copy of initial_env for patch.dict because patch.dict modifies its input dict
@@ -698,24 +698,24 @@ def test_agent_run_sets_and_restores_env_vars_when_params_provided(
 
     assert captured_env_in_runner.get('API_KEY') == "test_key_123"
     assert captured_env_in_runner.get('API_BASE') == "test_base_url"
-    assert captured_env_in_runner.get('API_TYPE') == "test_type"
-    # API_VERSION was not in payload, should retain its original value if any, or be None
-    assert captured_env_in_runner.get('API_VERSION') == initial_env.get(
-        "API_VERSION"
+    assert captured_env_in_runner.get('MODEL_TYPE') == "test_type" # Changed
+    # MODEL_NAME was not in payload, should retain its original value if any, or be None
+    assert captured_env_in_runner.get('MODEL_NAME') == initial_env.get( # Changed
+        "MODEL_NAME" # Changed
     )
     assert captured_env_in_runner.get('EXISTING_VAR') == "initial_value"
 
   # Assert that os.environ is restored
   assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
   assert os.environ.get('API_BASE') == initial_env.get('API_BASE') # Was not set initially
-  assert os.environ.get('API_TYPE') == initial_env.get('API_TYPE') # Was not set initially
-  assert os.environ.get('API_VERSION') == initial_env.get('API_VERSION')
+  assert os.environ.get('MODEL_TYPE') == initial_env.get('MODEL_TYPE') # Changed
+  assert os.environ.get('MODEL_NAME') == initial_env.get('MODEL_NAME') # Changed
   assert os.environ.get('EXISTING_VAR') == "initial_value"
   # Ensure no unexpected vars were added if they weren't there initially
   if "API_BASE" not in initial_env:
       assert "API_BASE" not in os.environ
-  if "API_TYPE" not in initial_env:
-      assert "API_TYPE" not in os.environ
+  if "MODEL_TYPE" not in initial_env: # Changed
+      assert "MODEL_TYPE" not in os.environ # Changed
 
 
 @patch('google.adk.cli.fast_api._get_runner_async')
@@ -738,6 +738,8 @@ def test_agent_run_does_not_set_env_vars_when_params_absent(
   def get_runner_side_effect(*args, **kwargs):
     captured_env_in_runner['API_KEY'] = os.environ.get('API_KEY')
     captured_env_in_runner['API_BASE'] = os.environ.get('API_BASE')
+    captured_env_in_runner['MODEL_TYPE'] = os.environ.get('MODEL_TYPE') # Added check
+    captured_env_in_runner['MODEL_NAME'] = os.environ.get('MODEL_NAME') # Added check
     captured_env_in_runner['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
     return mock_runner_instance
   mock_get_runner.side_effect = get_runner_side_effect
@@ -747,7 +749,7 @@ def test_agent_run_does_not_set_env_vars_when_params_absent(
       "user_id": info["user_id"],
       "session_id": info["session_id"],
       "new_message": {"role": "user", "parts": [{"text": "Hello agent"}]},
-      # No API params
+      # No model_type or model_name params
   }
 
   with patch.dict(os.environ, initial_env.copy(), clear=True):
@@ -756,10 +758,14 @@ def test_agent_run_does_not_set_env_vars_when_params_absent(
 
     assert captured_env_in_runner.get('API_KEY') == "original_api_key"
     assert captured_env_in_runner.get('API_BASE') is None # Was not in initial_env
+    assert captured_env_in_runner.get('MODEL_TYPE') is None # Added check
+    assert captured_env_in_runner.get('MODEL_NAME') is None # Added check
     assert captured_env_in_runner.get('EXISTING_VAR') == "initial_value"
 
   assert os.environ.get('API_KEY') == "original_api_key"
   assert os.environ.get('API_BASE') is None
+  assert os.environ.get('MODEL_TYPE') is None # Added check
+  assert os.environ.get('MODEL_NAME') is None # Added check
   assert os.environ.get('EXISTING_VAR') == "initial_value"
 
 
@@ -798,7 +804,7 @@ def test_agent_run_restores_env_vars_on_runner_exception(
       "api_key": "test_key_from_payload",
       "api_base": "test_base_from_payload",
   }
-
+  
   with patch.dict(os.environ, initial_env.copy(), clear=True):
     response = test_app.post("/run", json=payload)
     # FastAPI turns unhandled exceptions into 500 errors
@@ -837,8 +843,8 @@ def test_agent_run_sse_sets_and_restores_env_vars_when_params_provided(
   def get_runner_side_effect_sse(*args, **kwargs):
     captured_env_in_runner_sse['API_KEY'] = os.environ.get('API_KEY')
     captured_env_in_runner_sse['API_BASE'] = os.environ.get('API_BASE')
-    captured_env_in_runner_sse['API_TYPE'] = os.environ.get('API_TYPE')
-    captured_env_in_runner_sse['API_VERSION'] = os.environ.get('API_VERSION')
+    captured_env_in_runner_sse['MODEL_TYPE'] = os.environ.get('MODEL_TYPE') # Changed
+    captured_env_in_runner_sse['MODEL_NAME'] = os.environ.get('MODEL_NAME') # Changed
     captured_env_in_runner_sse['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
     return mock_runner_instance
   mock_get_runner.side_effect = get_runner_side_effect_sse
@@ -851,8 +857,8 @@ def test_agent_run_sse_sets_and_restores_env_vars_when_params_provided(
       "streaming": True, # Important for SSE
       "api_key": "sse_key_456",
       "api_base": "sse_base_url",
-      "api_type": "sse_type",
-      "api_version": "sse_version_1.0",
+      "model_type": "sse_type", # Changed
+      "model_name": "sse_model_name_1.0", # Changed
   }
 
   with patch.dict(os.environ, initial_env_copy, clear=True):
@@ -862,14 +868,14 @@ def test_agent_run_sse_sets_and_restores_env_vars_when_params_provided(
 
     assert captured_env_in_runner_sse.get('API_KEY') == "sse_key_456"
     assert captured_env_in_runner_sse.get('API_BASE') == "sse_base_url"
-    assert captured_env_in_runner_sse.get('API_TYPE') == "sse_type"
-    assert captured_env_in_runner_sse.get('API_VERSION') == "sse_version_1.0"
+    assert captured_env_in_runner_sse.get('MODEL_TYPE') == "sse_type" # Changed
+    assert captured_env_in_runner_sse.get('MODEL_NAME') == "sse_model_name_1.0" # Changed
     assert captured_env_in_runner_sse.get('EXISTING_VAR') == "initial_value_sse"
 
   assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
   assert os.environ.get('API_BASE') == initial_env.get('API_BASE')
-  assert os.environ.get('API_TYPE') == initial_env.get('API_TYPE')
-  assert os.environ.get('API_VERSION') == initial_env.get('API_VERSION')
+  assert os.environ.get('MODEL_TYPE') == initial_env.get('MODEL_TYPE') # Changed
+  assert os.environ.get('MODEL_NAME') == initial_env.get('MODEL_NAME') # Changed
   assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
   if "API_BASE" not in initial_env:
       assert "API_BASE" not in os.environ
@@ -896,6 +902,8 @@ def test_agent_run_sse_does_not_set_env_vars_when_params_absent(
   def get_runner_side_effect_sse_absent(*args, **kwargs):
     captured_env_in_runner_sse_absent['API_KEY'] = os.environ.get('API_KEY')
     captured_env_in_runner_sse_absent['API_BASE'] = os.environ.get('API_BASE')
+    captured_env_in_runner_sse_absent['MODEL_TYPE'] = os.environ.get('MODEL_TYPE') # Added
+    captured_env_in_runner_sse_absent['MODEL_NAME'] = os.environ.get('MODEL_NAME') # Added
     captured_env_in_runner_sse_absent['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
     return mock_runner_instance
   mock_get_runner.side_effect = get_runner_side_effect_sse_absent
@@ -906,7 +914,7 @@ def test_agent_run_sse_does_not_set_env_vars_when_params_absent(
       "session_id": info["session_id"],
       "new_message": {"role": "user", "parts": [{"text": "Hello SSE"}]},
       "streaming": True,
-      # No API params
+      # No model_type or model_name params
   }
 
   with patch.dict(os.environ, initial_env_copy, clear=True):
@@ -916,10 +924,14 @@ def test_agent_run_sse_does_not_set_env_vars_when_params_absent(
 
     assert captured_env_in_runner_sse_absent.get('API_KEY') == "original_api_key_sse_absent"
     assert captured_env_in_runner_sse_absent.get('API_BASE') is None
+    assert captured_env_in_runner_sse_absent.get('MODEL_TYPE') is None # Added
+    assert captured_env_in_runner_sse_absent.get('MODEL_NAME') is None # Added
     assert captured_env_in_runner_sse_absent.get('EXISTING_VAR') == "initial_value_sse_absent"
 
   assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
   assert os.environ.get('API_BASE') is None
+  assert os.environ.get('MODEL_TYPE') is None # Added
+  assert os.environ.get('MODEL_NAME') is None # Added
   assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
 
 
@@ -945,7 +957,7 @@ def test_agent_run_sse_restores_env_vars_on_exception(
     raise ValueError("Simulated SSE runner error")
 
   mock_get_runner.side_effect = get_runner_side_effect_exception_sse
-
+  
   # Even if _get_runner_async fails, the event_generator is defined.
   # If the error happens *inside* event_generator after _get_runner_async,
   # the streaming response would still be initiated.
@@ -973,7 +985,7 @@ def test_agent_run_sse_restores_env_vars_on_exception(
       # this might be 200 then error in stream, or 500 if error is before stream starts.
       # Given _get_runner_async is called inside event_generator,
       # the headers (200) would be sent first.
-      assert response.status_code == 200
+      assert response.status_code == 200 
       # Consume the stream to trigger the error within event_generator
       # The error 'Simulated SSE runner error' should be part of the stream content
       # or cause an ungraceful disconnect.
@@ -987,9 +999,15 @@ def test_agent_run_sse_restores_env_vars_on_exception(
   # Crucially, assert that os.environ is restored
   assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
   assert os.environ.get('API_BASE') == initial_env.get('API_BASE')
+  assert os.environ.get('MODEL_TYPE') == initial_env.get('MODEL_TYPE') # Added
+  assert os.environ.get('MODEL_NAME') == initial_env.get('MODEL_NAME') # Added
   assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
-  if "API_BASE" not in initial_env:
+  if "API_BASE" not in initial_env: # This remains for API_BASE
       assert "API_BASE" not in os.environ
+  if "MODEL_TYPE" not in initial_env: # Added for MODEL_TYPE
+      assert "MODEL_TYPE" not in os.environ
+  if "MODEL_NAME" not in initial_env: # Added for MODEL_NAME
+      assert "MODEL_NAME" not in os.environ
 
 
 def test_list_artifact_names(test_app, create_test_session):

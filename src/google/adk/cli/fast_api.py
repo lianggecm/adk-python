@@ -179,8 +179,8 @@ class AgentRunRequest(common.BaseModel):
   streaming: bool = False
   api_key: Optional[str] = None
   api_base: Optional[str] = None
-  api_type: Optional[str] = None
-  api_version: Optional[str] = None
+  model_type: Optional[str] = None
+  model_name: Optional[str] = None
 
 
 class AddSessionToEvalSetRequest(common.BaseModel):
@@ -714,16 +714,16 @@ def get_fast_api_app(
       temp_env_vars["API_KEY"] = req.api_key
     if req.api_base is not None:
       temp_env_vars["API_BASE"] = req.api_base
-    if req.api_type is not None:
-      temp_env_vars["API_TYPE"] = req.api_type
-    if req.api_version is not None:
-      temp_env_vars["API_VERSION"] = req.api_version
+    if req.model_type is not None:
+      temp_env_vars["MODEL_TYPE"] = req.model_type
+    if req.model_name is not None:
+      temp_env_vars["MODEL_NAME"] = req.model_name
 
     original_vars: dict[str, Optional[str]] = {}
     try:
       if temp_env_vars:
         original_vars = _set_temporary_env_vars(temp_env_vars)
-
+      
       runner = await _get_runner_async(req.app_name)
       events = [
           event
@@ -755,10 +755,10 @@ def get_fast_api_app(
       temp_env_vars["API_KEY"] = req.api_key
     if req.api_base is not None:
       temp_env_vars["API_BASE"] = req.api_base
-    if req.api_type is not None:
-      temp_env_vars["API_TYPE"] = req.api_type
-    if req.api_version is not None:
-      temp_env_vars["API_VERSION"] = req.api_version
+    if req.model_type is not None:
+      temp_env_vars["MODEL_TYPE"] = req.model_type
+    if req.model_name is not None:
+      temp_env_vars["MODEL_NAME"] = req.model_name
 
     original_vars: dict[str, Optional[str]] = {}
     try:
