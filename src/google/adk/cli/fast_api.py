@@ -57,6 +57,7 @@ from ..agents.llm_agent import Agent
 from ..agents.run_config import StreamingMode
 from ..artifacts.gcs_artifact_service import GcsArtifactService
 from ..artifacts.in_memory_artifact_service import InMemoryArtifactService
+from ..artifacts.database_artifact_service import DatabaseArtifactService
 from ..errors.not_found_error import NotFoundError
 from ..evaluation.eval_case import EvalCase
 from ..evaluation.eval_case import SessionInput
@@ -294,10 +295,14 @@ def get_fast_api_app(
     session_service = InMemorySessionService()
 
   # Build the Artifact service
+  DBARTIFACT_PREFIX = "dbartifact://"
   if artifact_service_uri:
     if artifact_service_uri.startswith("gs://"):
       gcs_bucket = artifact_service_uri.split("://")[1]
       artifact_service = GcsArtifactService(bucket_name=gcs_bucket)
+    elif artifact_service_uri.startswith(DBARTIFACT_PREFIX):
+      extracted_url = artifact_service_uri[len(DBARTIFACT_PREFIX) :]
+      artifact_service = DatabaseArtifactService(db_url=extracted_url)
     else:
       raise click.ClickException(
           "Unsupported artifact service URI: %s" % artifact_service_uri
