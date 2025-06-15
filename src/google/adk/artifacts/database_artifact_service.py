@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine, String, Integer, DateTime, PickleType, ForeignKeyConstraint, Engine, MetaData, inspect, func, select, delete
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 from sqlalchemy.orm import Session as DatabaseSessionFactory
-from sqlalchemy.exc import ArgumentError, ImportError as SQLAlchemyImportError # Renaming to avoid clash with built-in ImportError
+from sqlalchemy.exc import ArgumentError # Renaming to avoid clash with built-in ImportError
 import datetime
 from google.genai import types as genai_types
 from typing import Any, Optional
@@ -60,7 +60,7 @@ class DatabaseArtifactService(BaseArtifactService):
       # The return type of create_engine is Engine, but we need to explicitly
       # cast it to Engine because mypy doesn't know that.
       self.db_engine: Engine = create_engine(db_url, **kwargs)  # type: ignore[assignment]
-    except (ArgumentError, SQLAlchemyImportError) as e: # Use aliased SQLAlchemyImportError
+    except (ArgumentError, ImportError) as e: # Use aliased SQLAlchemyImportError
       # The db_url can contain passwords, so we don't include it in the error.
       logger.error("Failed to create database engine: %s", e)
       raise ValueError(
