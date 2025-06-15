@@ -74,10 +74,10 @@ class DatabaseArtifactService(BaseArtifactService):
 
     Base.metadata.create_all(self.db_engine)
 
-    @override
-    async def save_artifact(
-        self,
-        *,
+  @override
+  async def save_artifact(
+      self,
+      *,
         app_name: str,
         user_id: str,
         session_id: str,
@@ -127,10 +127,10 @@ class DatabaseArtifactService(BaseArtifactService):
             sf.commit()
             return new_revision_id
 
-    @override
-    async def load_artifact(
-        self,
-        *,
+  @override
+  async def load_artifact(
+      self,
+      *,
         app_name: str,
         user_id: str,
         session_id: str,
@@ -165,10 +165,10 @@ class DatabaseArtifactService(BaseArtifactService):
 
             return result if result else None
 
-    @override
-    async def list_artifact_keys(
-        self, *, app_name: str, user_id: str, session_id: str
-    ) -> list[str]:
+  @override
+  async def list_artifact_keys(
+      self, *, app_name: str, user_id: str, session_id: str
+  ) -> list[str]:
         with self.database_session_factory() as sf:
             stmt = (
                 select(StorageArtifact.filename)
@@ -182,10 +182,10 @@ class DatabaseArtifactService(BaseArtifactService):
             results = sf.execute(stmt).scalars().all()
             return list(results)
 
-    @override
-    async def delete_artifact(
-        self, *, app_name: str, user_id: str, session_id: str, filename: str
-    ) -> None:
+  @override
+  async def delete_artifact(
+      self, *, app_name: str, user_id: str, session_id: str, filename: str
+  ) -> None:
         with self.database_session_factory() as sf:
             stmt = delete(StorageArtifact).where(
                 StorageArtifact.app_name == app_name,
@@ -196,10 +196,10 @@ class DatabaseArtifactService(BaseArtifactService):
             sf.execute(stmt)
             sf.commit()
 
-    @override
-    async def list_versions(
-        self, *, app_name: str, user_id: str, session_id: str, filename: str
-    ) -> list[int]:
+  @override
+  async def list_versions(
+      self, *, app_name: str, user_id: str, session_id: str, filename: str
+  ) -> list[int]:
         with self.database_session_factory() as sf:
             stmt = (
                 select(StorageArtifactContent.revision_id)
