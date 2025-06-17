@@ -55,9 +55,9 @@ from ..agents.live_request_queue import LiveRequest
 from ..agents.live_request_queue import LiveRequestQueue
 from ..agents.llm_agent import Agent
 from ..agents.run_config import StreamingMode
+from ..artifacts.database_artifact_service import DatabaseArtifactService
 from ..artifacts.gcs_artifact_service import GcsArtifactService
 from ..artifacts.in_memory_artifact_service import InMemoryArtifactService
-from ..artifacts.database_artifact_service import DatabaseArtifactService
 from ..errors.not_found_error import NotFoundError
 from ..evaluation.eval_case import EvalCase
 from ..evaluation.eval_case import SessionInput
