@@ -42,8 +42,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger(__name__)
-
+logger = logging.getLogger('google_adk.' + __name__)
 
 # Here we create a dummy agent module that get_fast_api_app expects
 class DummyAgent(BaseAgent):
