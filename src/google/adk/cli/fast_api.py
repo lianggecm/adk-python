@@ -88,7 +88,7 @@ _EVAL_SET_FILE_EXTENSION = ".evalset.json"
 
 # Helper functions for managing environment variables
 def _set_temporary_env_vars(
-    env_vars_to_set: dict[str, str]
+    env_vars_to_set: dict[str, str],
 ) -> dict[str, Optional[str]]:
   """Sets temporary environment variables and returns their original values."""
   original_env_vars: dict[str, Optional[str]] = {}
@@ -723,7 +723,7 @@ def get_fast_api_app(
     try:
       if temp_env_vars:
         original_vars = _set_temporary_env_vars(temp_env_vars)
-      
+
       runner = await _get_runner_async(req.app_name)
       events = [
           event
@@ -780,9 +780,7 @@ def get_fast_api_app(
           ):
             # Format as SSE data
             sse_event = event.model_dump_json(exclude_none=True, by_alias=True)
-            logger.info(
-                "Generated event in agent run streaming: %s", sse_event
-            )
+            logger.info("Generated event in agent run streaming: %s", sse_event)
             yield f"data: {sse_event}\n\n"
         except Exception as e:
           logger.exception("Error in event_generator: %s", e)

@@ -42,7 +42,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger('google_adk.' + __name__)
+logger = logging.getLogger("google_adk." + __name__)
+
 
 # Here we create a dummy agent module that get_fast_api_app expects
 class DummyAgent(BaseAgent):
@@ -642,7 +643,7 @@ def test_agent_run(test_app, create_test_session):
   logger.info("Agent run test completed successfully")
 
 
-@patch('google.adk.cli.fast_api._get_runner_async')
+@patch("google.adk.cli.fast_api._get_runner_async")
 def test_agent_run_sets_and_restores_env_vars_when_params_provided(
     mock_get_runner, test_app, create_test_session
 ):
@@ -650,31 +651,38 @@ def test_agent_run_sets_and_restores_env_vars_when_params_provided(
   info = create_test_session
   initial_env = {
       "EXISTING_VAR": "initial_value",
-      "API_KEY": "original_api_key", # This should be overridden then restored
+      "API_KEY": "original_api_key",  # This should be overridden then restored
   }
   # Ensure some vars that will be set are not in initial_env for a clean test
   # These represent vars that might not be set at all before the call
   if "API_BASE" in initial_env:
     del initial_env["API_BASE"]
-  if "MODEL_TYPE" in initial_env: # Changed from API_TYPE
+  if "MODEL_TYPE" in initial_env:  # Changed from API_TYPE
     del initial_env["MODEL_TYPE"]
-  if "MODEL_NAME" in initial_env: # Changed from API_VERSION
-    initial_env["MODEL_NAME"] = "original_model_name" # Changed from original_api_version
-
+  if "MODEL_NAME" in initial_env:  # Changed from API_VERSION
+    initial_env["MODEL_NAME"] = (
+        "original_model_name"  # Changed from original_api_version
+    )
 
   mock_runner_instance = MagicMock(spec=Runner)
+
   async def dummy_run_async_gen(*args, **kwargs):
     yield _event_1()
+
   mock_runner_instance.run_async = MagicMock(side_effect=dummy_run_async_gen)
 
   captured_env_in_runner = {}
 
   def get_runner_side_effect(*args, **kwargs):
-    captured_env_in_runner['API_KEY'] = os.environ.get('API_KEY')
-    captured_env_in_runner['API_BASE'] = os.environ.get('API_BASE')
-    captured_env_in_runner['MODEL_TYPE'] = os.environ.get('MODEL_TYPE') # Changed
-    captured_env_in_runner['MODEL_NAME'] = os.environ.get('MODEL_NAME') # Changed
-    captured_env_in_runner['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
+    captured_env_in_runner["API_KEY"] = os.environ.get("API_KEY")
+    captured_env_in_runner["API_BASE"] = os.environ.get("API_BASE")
+    captured_env_in_runner["MODEL_TYPE"] = os.environ.get(
+        "MODEL_TYPE"
+    )  # Changed
+    captured_env_in_runner["MODEL_NAME"] = os.environ.get(
+        "MODEL_NAME"
+    )  # Changed
+    captured_env_in_runner["EXISTING_VAR"] = os.environ.get("EXISTING_VAR")
     return mock_runner_instance
 
   mock_get_runner.side_effect = get_runner_side_effect
@@ -686,7 +694,7 @@ def test_agent_run_sets_and_restores_env_vars_when_params_provided(
       "new_message": {"role": "user", "parts": [{"text": "Hello agent"}]},
       "api_key": "test_key_123",
       "api_base": "test_base_url",
-      "model_type": "test_type", # Changed
+      "model_type": "test_type",  # Changed
       # model_name is intentionally omitted to test handling of None
   }
 
@@ -695,29 +703,37 @@ def test_agent_run_sets_and_restores_env_vars_when_params_provided(
     response = test_app.post("/run", json=payload)
     assert response.status_code == 200
 
-    assert captured_env_in_runner.get('API_KEY') == "test_key_123"
-    assert captured_env_in_runner.get('API_BASE') == "test_base_url"
-    assert captured_env_in_runner.get('MODEL_TYPE') == "test_type" # Changed
+    assert captured_env_in_runner.get("API_KEY") == "test_key_123"
+    assert captured_env_in_runner.get("API_BASE") == "test_base_url"
+    assert captured_env_in_runner.get("MODEL_TYPE") == "test_type"  # Changed
     # MODEL_NAME was not in payload, should retain its original value if any, or be None
-    assert captured_env_in_runner.get('MODEL_NAME') == initial_env.get( # Changed
-        "MODEL_NAME" # Changed
+    assert captured_env_in_runner.get(
+        "MODEL_NAME"
+    ) == initial_env.get(  # Changed
+        "MODEL_NAME"  # Changed
     )
-    assert captured_env_in_runner.get('EXISTING_VAR') == "initial_value"
+    assert captured_env_in_runner.get("EXISTING_VAR") == "initial_value"
 
   # Assert that os.environ is restored
-  assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
-  assert os.environ.get('API_BASE') == initial_env.get('API_BASE') # Was not set initially
-  assert os.environ.get('MODEL_TYPE') == initial_env.get('MODEL_TYPE') # Changed
-  assert os.environ.get('MODEL_NAME') == initial_env.get('MODEL_NAME') # Changed
-  assert os.environ.get('EXISTING_VAR') == "initial_value"
+  assert os.environ.get("API_KEY") == initial_env.get("API_KEY")
+  assert os.environ.get("API_BASE") == initial_env.get(
+      "API_BASE"
+  )  # Was not set initially
+  assert os.environ.get("MODEL_TYPE") == initial_env.get(
+      "MODEL_TYPE"
+  )  # Changed
+  assert os.environ.get("MODEL_NAME") == initial_env.get(
+      "MODEL_NAME"
+  )  # Changed
+  assert os.environ.get("EXISTING_VAR") == "initial_value"
   # Ensure no unexpected vars were added if they weren't there initially
   if "API_BASE" not in initial_env:
-      assert "API_BASE" not in os.environ
-  if "MODEL_TYPE" not in initial_env: # Changed
-      assert "MODEL_TYPE" not in os.environ # Changed
+    assert "API_BASE" not in os.environ
+  if "MODEL_TYPE" not in initial_env:  # Changed
+    assert "MODEL_TYPE" not in os.environ  # Changed
 
 
-@patch('google.adk.cli.fast_api._get_runner_async')
+@patch("google.adk.cli.fast_api._get_runner_async")
 def test_agent_run_does_not_set_env_vars_when_params_absent(
     mock_get_runner, test_app, create_test_session
 ):
@@ -729,18 +745,26 @@ def test_agent_run_does_not_set_env_vars_when_params_absent(
   }
 
   mock_runner_instance = MagicMock(spec=Runner)
+
   async def dummy_run_async_gen(*args, **kwargs):
     yield _event_1()
+
   mock_runner_instance.run_async = MagicMock(side_effect=dummy_run_async_gen)
 
   captured_env_in_runner = {}
+
   def get_runner_side_effect(*args, **kwargs):
-    captured_env_in_runner['API_KEY'] = os.environ.get('API_KEY')
-    captured_env_in_runner['API_BASE'] = os.environ.get('API_BASE')
-    captured_env_in_runner['MODEL_TYPE'] = os.environ.get('MODEL_TYPE') # Added check
-    captured_env_in_runner['MODEL_NAME'] = os.environ.get('MODEL_NAME') # Added check
-    captured_env_in_runner['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
+    captured_env_in_runner["API_KEY"] = os.environ.get("API_KEY")
+    captured_env_in_runner["API_BASE"] = os.environ.get("API_BASE")
+    captured_env_in_runner["MODEL_TYPE"] = os.environ.get(
+        "MODEL_TYPE"
+    )  # Added check
+    captured_env_in_runner["MODEL_NAME"] = os.environ.get(
+        "MODEL_NAME"
+    )  # Added check
+    captured_env_in_runner["EXISTING_VAR"] = os.environ.get("EXISTING_VAR")
     return mock_runner_instance
+
   mock_get_runner.side_effect = get_runner_side_effect
 
   payload = {
@@ -755,20 +779,22 @@ def test_agent_run_does_not_set_env_vars_when_params_absent(
     response = test_app.post("/run", json=payload)
     assert response.status_code == 200
 
-    assert captured_env_in_runner.get('API_KEY') == "original_api_key"
-    assert captured_env_in_runner.get('API_BASE') is None # Was not in initial_env
-    assert captured_env_in_runner.get('MODEL_TYPE') is None # Added check
-    assert captured_env_in_runner.get('MODEL_NAME') is None # Added check
-    assert captured_env_in_runner.get('EXISTING_VAR') == "initial_value"
+    assert captured_env_in_runner.get("API_KEY") == "original_api_key"
+    assert (
+        captured_env_in_runner.get("API_BASE") is None
+    )  # Was not in initial_env
+    assert captured_env_in_runner.get("MODEL_TYPE") is None  # Added check
+    assert captured_env_in_runner.get("MODEL_NAME") is None  # Added check
+    assert captured_env_in_runner.get("EXISTING_VAR") == "initial_value"
 
-  assert os.environ.get('API_KEY') == "original_api_key"
-  assert os.environ.get('API_BASE') is None
-  assert os.environ.get('MODEL_TYPE') is None # Added check
-  assert os.environ.get('MODEL_NAME') is None # Added check
-  assert os.environ.get('EXISTING_VAR') == "initial_value"
+  assert os.environ.get("API_KEY") == "original_api_key"
+  assert os.environ.get("API_BASE") is None
+  assert os.environ.get("MODEL_TYPE") is None  # Added check
+  assert os.environ.get("MODEL_NAME") is None  # Added check
+  assert os.environ.get("EXISTING_VAR") == "initial_value"
 
 
-@patch('google.adk.cli.fast_api._get_runner_async')
+@patch("google.adk.cli.fast_api._get_runner_async")
 def test_agent_run_restores_env_vars_on_runner_exception(
     mock_get_runner, test_app, create_test_session
 ):
@@ -780,15 +806,15 @@ def test_agent_run_restores_env_vars_on_runner_exception(
   }
   # This will be set by the payload, then should be restored
   if "API_BASE" in initial_env:
-      del initial_env["API_BASE"]
-
+    del initial_env["API_BASE"]
 
   # Mock _get_runner_async to raise an exception
   def get_runner_side_effect_exception(*args, **kwargs):
     # Simulate env vars being set before the exception
-    os.environ['API_KEY'] = "new_key_temp"
-    os.environ['API_BASE'] = "new_base_temp"
+    os.environ["API_KEY"] = "new_key_temp"
+    os.environ["API_BASE"] = "new_base_temp"
     raise ValueError("Simulated runner error")
+
   mock_get_runner.side_effect = get_runner_side_effect_exception
   # We also need to mock the runner instance that run_async is called on,
   # even if _get_runner_async raises an error, the structure might expect it.
@@ -803,21 +829,25 @@ def test_agent_run_restores_env_vars_on_runner_exception(
       "api_key": "test_key_from_payload",
       "api_base": "test_base_from_payload",
   }
-  
+
   with patch.dict(os.environ, initial_env.copy(), clear=True):
     response = test_app.post("/run", json=payload)
     # FastAPI turns unhandled exceptions into 500 errors
     assert response.status_code == 500
 
   # Crucially, assert that os.environ is restored
-  assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
-  assert os.environ.get('API_BASE') == initial_env.get('API_BASE') # Should be None as it wasn't in initial_env
-  assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
-  if "API_BASE" not in initial_env: # Ensure it's gone if it wasn't there initially
-      assert "API_BASE" not in os.environ
+  assert os.environ.get("API_KEY") == initial_env.get("API_KEY")
+  assert os.environ.get("API_BASE") == initial_env.get(
+      "API_BASE"
+  )  # Should be None as it wasn't in initial_env
+  assert os.environ.get("EXISTING_VAR") == initial_env.get("EXISTING_VAR")
+  if (
+      "API_BASE" not in initial_env
+  ):  # Ensure it's gone if it wasn't there initially
+    assert "API_BASE" not in os.environ
 
 
-@patch('google.adk.cli.fast_api._get_runner_async')
+@patch("google.adk.cli.fast_api._get_runner_async")
 def test_agent_run_sse_sets_and_restores_env_vars_when_params_provided(
     mock_get_runner, test_app, create_test_session
 ):
@@ -827,25 +857,35 @@ def test_agent_run_sse_sets_and_restores_env_vars_when_params_provided(
       "EXISTING_VAR": "initial_value_sse",
       "API_KEY": "original_api_key_sse",
   }
-  if "API_BASE" in initial_env: # Ensure not present for a clean test
-      del initial_env["API_BASE"]
-  initial_env_copy = initial_env.copy() # For restoration check
+  if "API_BASE" in initial_env:  # Ensure not present for a clean test
+    del initial_env["API_BASE"]
+  initial_env_copy = initial_env.copy()  # For restoration check
 
   mock_runner_instance = MagicMock(spec=Runner)
+
   async def dummy_run_async_gen_sse(*args, **kwargs):
     # Simulate yielding SSE events
     yield _event_1()
     yield _event_2()
-  mock_runner_instance.run_async = MagicMock(side_effect=dummy_run_async_gen_sse)
+
+  mock_runner_instance.run_async = MagicMock(
+      side_effect=dummy_run_async_gen_sse
+  )
 
   captured_env_in_runner_sse = {}
+
   def get_runner_side_effect_sse(*args, **kwargs):
-    captured_env_in_runner_sse['API_KEY'] = os.environ.get('API_KEY')
-    captured_env_in_runner_sse['API_BASE'] = os.environ.get('API_BASE')
-    captured_env_in_runner_sse['MODEL_TYPE'] = os.environ.get('MODEL_TYPE') # Changed
-    captured_env_in_runner_sse['MODEL_NAME'] = os.environ.get('MODEL_NAME') # Changed
-    captured_env_in_runner_sse['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
+    captured_env_in_runner_sse["API_KEY"] = os.environ.get("API_KEY")
+    captured_env_in_runner_sse["API_BASE"] = os.environ.get("API_BASE")
+    captured_env_in_runner_sse["MODEL_TYPE"] = os.environ.get(
+        "MODEL_TYPE"
+    )  # Changed
+    captured_env_in_runner_sse["MODEL_NAME"] = os.environ.get(
+        "MODEL_NAME"
+    )  # Changed
+    captured_env_in_runner_sse["EXISTING_VAR"] = os.environ.get("EXISTING_VAR")
     return mock_runner_instance
+
   mock_get_runner.side_effect = get_runner_side_effect_sse
 
   payload = {
@@ -853,34 +893,40 @@ def test_agent_run_sse_sets_and_restores_env_vars_when_params_provided(
       "user_id": info["user_id"],
       "session_id": info["session_id"],
       "new_message": {"role": "user", "parts": [{"text": "Hello SSE"}]},
-      "streaming": True, # Important for SSE
+      "streaming": True,  # Important for SSE
       "api_key": "sse_key_456",
       "api_base": "sse_base_url",
-      "model_type": "sse_type", # Changed
-      "model_name": "sse_model_name_1.0", # Changed
+      "model_type": "sse_type",  # Changed
+      "model_name": "sse_model_name_1.0",  # Changed
   }
 
   with patch.dict(os.environ, initial_env_copy, clear=True):
     response = test_app.post("/run_sse", json=payload)
     assert response.status_code == 200
-    _ = response.text # Consume stream
+    _ = response.text  # Consume stream
 
-    assert captured_env_in_runner_sse.get('API_KEY') == "sse_key_456"
-    assert captured_env_in_runner_sse.get('API_BASE') == "sse_base_url"
-    assert captured_env_in_runner_sse.get('MODEL_TYPE') == "sse_type" # Changed
-    assert captured_env_in_runner_sse.get('MODEL_NAME') == "sse_model_name_1.0" # Changed
-    assert captured_env_in_runner_sse.get('EXISTING_VAR') == "initial_value_sse"
+    assert captured_env_in_runner_sse.get("API_KEY") == "sse_key_456"
+    assert captured_env_in_runner_sse.get("API_BASE") == "sse_base_url"
+    assert captured_env_in_runner_sse.get("MODEL_TYPE") == "sse_type"  # Changed
+    assert (
+        captured_env_in_runner_sse.get("MODEL_NAME") == "sse_model_name_1.0"
+    )  # Changed
+    assert captured_env_in_runner_sse.get("EXISTING_VAR") == "initial_value_sse"
 
-  assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
-  assert os.environ.get('API_BASE') == initial_env.get('API_BASE')
-  assert os.environ.get('MODEL_TYPE') == initial_env.get('MODEL_TYPE') # Changed
-  assert os.environ.get('MODEL_NAME') == initial_env.get('MODEL_NAME') # Changed
-  assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
+  assert os.environ.get("API_KEY") == initial_env.get("API_KEY")
+  assert os.environ.get("API_BASE") == initial_env.get("API_BASE")
+  assert os.environ.get("MODEL_TYPE") == initial_env.get(
+      "MODEL_TYPE"
+  )  # Changed
+  assert os.environ.get("MODEL_NAME") == initial_env.get(
+      "MODEL_NAME"
+  )  # Changed
+  assert os.environ.get("EXISTING_VAR") == initial_env.get("EXISTING_VAR")
   if "API_BASE" not in initial_env:
-      assert "API_BASE" not in os.environ
+    assert "API_BASE" not in os.environ
 
 
-@patch('google.adk.cli.fast_api._get_runner_async')
+@patch("google.adk.cli.fast_api._get_runner_async")
 def test_agent_run_sse_does_not_set_env_vars_when_params_absent(
     mock_get_runner, test_app, create_test_session
 ):
@@ -893,18 +939,30 @@ def test_agent_run_sse_does_not_set_env_vars_when_params_absent(
   initial_env_copy = initial_env.copy()
 
   mock_runner_instance = MagicMock(spec=Runner)
+
   async def dummy_run_async_gen_sse_absent(*args, **kwargs):
     yield _event_1()
-  mock_runner_instance.run_async = MagicMock(side_effect=dummy_run_async_gen_sse_absent)
+
+  mock_runner_instance.run_async = MagicMock(
+      side_effect=dummy_run_async_gen_sse_absent
+  )
 
   captured_env_in_runner_sse_absent = {}
+
   def get_runner_side_effect_sse_absent(*args, **kwargs):
-    captured_env_in_runner_sse_absent['API_KEY'] = os.environ.get('API_KEY')
-    captured_env_in_runner_sse_absent['API_BASE'] = os.environ.get('API_BASE')
-    captured_env_in_runner_sse_absent['MODEL_TYPE'] = os.environ.get('MODEL_TYPE') # Added
-    captured_env_in_runner_sse_absent['MODEL_NAME'] = os.environ.get('MODEL_NAME') # Added
-    captured_env_in_runner_sse_absent['EXISTING_VAR'] = os.environ.get('EXISTING_VAR')
+    captured_env_in_runner_sse_absent["API_KEY"] = os.environ.get("API_KEY")
+    captured_env_in_runner_sse_absent["API_BASE"] = os.environ.get("API_BASE")
+    captured_env_in_runner_sse_absent["MODEL_TYPE"] = os.environ.get(
+        "MODEL_TYPE"
+    )  # Added
+    captured_env_in_runner_sse_absent["MODEL_NAME"] = os.environ.get(
+        "MODEL_NAME"
+    )  # Added
+    captured_env_in_runner_sse_absent["EXISTING_VAR"] = os.environ.get(
+        "EXISTING_VAR"
+    )
     return mock_runner_instance
+
   mock_get_runner.side_effect = get_runner_side_effect_sse_absent
 
   payload = {
@@ -919,22 +977,28 @@ def test_agent_run_sse_does_not_set_env_vars_when_params_absent(
   with patch.dict(os.environ, initial_env_copy, clear=True):
     response = test_app.post("/run_sse", json=payload)
     assert response.status_code == 200
-    _ = response.text # Consume stream
+    _ = response.text  # Consume stream
 
-    assert captured_env_in_runner_sse_absent.get('API_KEY') == "original_api_key_sse_absent"
-    assert captured_env_in_runner_sse_absent.get('API_BASE') is None
-    assert captured_env_in_runner_sse_absent.get('MODEL_TYPE') is None # Added
-    assert captured_env_in_runner_sse_absent.get('MODEL_NAME') is None # Added
-    assert captured_env_in_runner_sse_absent.get('EXISTING_VAR') == "initial_value_sse_absent"
+    assert (
+        captured_env_in_runner_sse_absent.get("API_KEY")
+        == "original_api_key_sse_absent"
+    )
+    assert captured_env_in_runner_sse_absent.get("API_BASE") is None
+    assert captured_env_in_runner_sse_absent.get("MODEL_TYPE") is None  # Added
+    assert captured_env_in_runner_sse_absent.get("MODEL_NAME") is None  # Added
+    assert (
+        captured_env_in_runner_sse_absent.get("EXISTING_VAR")
+        == "initial_value_sse_absent"
+    )
 
-  assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
-  assert os.environ.get('API_BASE') is None
-  assert os.environ.get('MODEL_TYPE') is None # Added
-  assert os.environ.get('MODEL_NAME') is None # Added
-  assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
+  assert os.environ.get("API_KEY") == initial_env.get("API_KEY")
+  assert os.environ.get("API_BASE") is None
+  assert os.environ.get("MODEL_TYPE") is None  # Added
+  assert os.environ.get("MODEL_NAME") is None  # Added
+  assert os.environ.get("EXISTING_VAR") == initial_env.get("EXISTING_VAR")
 
 
-@patch('google.adk.cli.fast_api._get_runner_async')
+@patch("google.adk.cli.fast_api._get_runner_async")
 def test_agent_run_sse_restores_env_vars_on_exception(
     mock_get_runner, test_app, create_test_session
 ):
@@ -944,8 +1008,8 @@ def test_agent_run_sse_restores_env_vars_on_exception(
       "API_KEY": "original_key_sse_exc",
       "EXISTING_VAR": "original_existing_sse_exc",
   }
-  if "API_BASE" in initial_env: # Ensure not present for clean test
-      del initial_env["API_BASE"]
+  if "API_BASE" in initial_env:  # Ensure not present for clean test
+    del initial_env["API_BASE"]
   initial_env_copy = initial_env.copy()
 
   # Mock _get_runner_async to raise an exception
@@ -956,7 +1020,7 @@ def test_agent_run_sse_restores_env_vars_on_exception(
     raise ValueError("Simulated SSE runner error")
 
   mock_get_runner.side_effect = get_runner_side_effect_exception_sse
-  
+
   # Even if _get_runner_async fails, the event_generator is defined.
   # If the error happens *inside* event_generator after _get_runner_async,
   # the streaming response would still be initiated.
@@ -984,29 +1048,30 @@ def test_agent_run_sse_restores_env_vars_on_exception(
       # this might be 200 then error in stream, or 500 if error is before stream starts.
       # Given _get_runner_async is called inside event_generator,
       # the headers (200) would be sent first.
-      assert response.status_code == 200 
+      assert response.status_code == 200
       # Consume the stream to trigger the error within event_generator
       # The error 'Simulated SSE runner error' should be part of the stream content
       # or cause an ungraceful disconnect.
       response_text = response.text
-      assert "Simulated SSE runner error" in response_text # Check if error message is in stream
+      assert (
+          "Simulated SSE runner error" in response_text
+      )  # Check if error message is in stream
     except Exception as e:
       # If TestClient raises an error directly (e.g. connection error if server crashes hard)
       logger.info(f"SSE request failed as expected: {e}")
 
-
   # Crucially, assert that os.environ is restored
-  assert os.environ.get('API_KEY') == initial_env.get('API_KEY')
-  assert os.environ.get('API_BASE') == initial_env.get('API_BASE')
-  assert os.environ.get('MODEL_TYPE') == initial_env.get('MODEL_TYPE') # Added
-  assert os.environ.get('MODEL_NAME') == initial_env.get('MODEL_NAME') # Added
-  assert os.environ.get('EXISTING_VAR') == initial_env.get('EXISTING_VAR')
-  if "API_BASE" not in initial_env: # This remains for API_BASE
-      assert "API_BASE" not in os.environ
-  if "MODEL_TYPE" not in initial_env: # Added for MODEL_TYPE
-      assert "MODEL_TYPE" not in os.environ
-  if "MODEL_NAME" not in initial_env: # Added for MODEL_NAME
-      assert "MODEL_NAME" not in os.environ
+  assert os.environ.get("API_KEY") == initial_env.get("API_KEY")
+  assert os.environ.get("API_BASE") == initial_env.get("API_BASE")
+  assert os.environ.get("MODEL_TYPE") == initial_env.get("MODEL_TYPE")  # Added
+  assert os.environ.get("MODEL_NAME") == initial_env.get("MODEL_NAME")  # Added
+  assert os.environ.get("EXISTING_VAR") == initial_env.get("EXISTING_VAR")
+  if "API_BASE" not in initial_env:  # This remains for API_BASE
+    assert "API_BASE" not in os.environ
+  if "MODEL_TYPE" not in initial_env:  # Added for MODEL_TYPE
+    assert "MODEL_TYPE" not in os.environ
+  if "MODEL_NAME" not in initial_env:  # Added for MODEL_NAME
+    assert "MODEL_NAME" not in os.environ
 
 
 def test_list_artifact_names(test_app, create_test_session):

@@ -97,3 +97,6 @@ Thumbs.db
 *.bak
 *.tmp
 *.temp 
+pyproject.toml
+uv.lock
+pyproject.toml
