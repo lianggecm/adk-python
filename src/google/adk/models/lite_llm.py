@@ -196,6 +196,14 @@ def _content_to_message_param(
         content_present = True
 
     final_content = message_content if content_present else None
+    if final_content and isinstance(final_content, list):
+      # when the content is a single text object, we can use it directly.
+      # this is needed for ollama_chat provider which fails if content is a list
+      final_content = (
+          final_content[0].get("text", "")
+          if final_content[0].get("type", None) == "text"
+          else final_content
+      )
 
     return ChatCompletionAssistantMessage(
         role=role,
@@ -731,11 +739,12 @@ class LiteLlm(BaseLlm):
                 _message_to_generate_content_response(
                     ChatCompletionAssistantMessage(
                         role="assistant",
-                        content="",
+                        content=text,
                         tool_calls=tool_calls,
                     )
                 )
             )
+            text = ""
             function_calls.clear()
           elif finish_reason == "stop" and text:
             aggregated_llm_response = _message_to_generate_content_response(

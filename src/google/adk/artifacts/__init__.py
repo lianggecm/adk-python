@@ -15,9 +15,11 @@
 from .base_artifact_service import BaseArtifactService
 from .gcs_artifact_service import GcsArtifactService
 from .in_memory_artifact_service import InMemoryArtifactService
+from .database_artifact_service import DatabaseArtifactService
 
 __all__ = [
     'BaseArtifactService',
     'GcsArtifactService',
     'InMemoryArtifactService',
+    'DatabaseArtifactService',
 ]

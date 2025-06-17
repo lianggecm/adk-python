@@ -19,7 +19,10 @@ from typing import Union
 
 import graphviz
 
-from ..agents import BaseAgent, SequentialAgent, LoopAgent, ParallelAgent
+from ..agents import BaseAgent
+from ..agents import LoopAgent
+from ..agents import ParallelAgent
+from ..agents import SequentialAgent
 from ..agents.llm_agent import LlmAgent
 from ..tools.agent_tool import AgentTool
 from ..tools.base_tool import BaseTool
@@ -35,7 +38,12 @@ else:
   retrieval_tool_module_loaded = True
 
 
-async def build_graph(graph: graphviz.Digraph, agent: BaseAgent, highlight_pairs, parent_agent=None):
+async def build_graph(
+    graph: graphviz.Digraph,
+    agent: BaseAgent,
+    highlight_pairs,
+    parent_agent=None,
+):
   """
   Build a graph of the agent and its sub-agents.
   Args:
@@ -43,7 +51,7 @@ async def build_graph(graph: graphviz.Digraph, agent: BaseAgent, highlight_pairs
     agent: The agent to build the graph for.
     highlight_pairs: A list of pairs of nodes to highlight.
     parent_agent: The parent agent of the current agent. This is specifically used when building Workflow Agents to directly connect a node to nodes inside a Workflow Agent.
-  
+
   Returns:
     None
   """
@@ -56,11 +64,11 @@ async def build_graph(graph: graphviz.Digraph, agent: BaseAgent, highlight_pairs
     if isinstance(tool_or_agent, BaseAgent):
       # Added Workflow Agent checks for different agent types
       if isinstance(tool_or_agent, SequentialAgent):
-        return tool_or_agent.name + f" (Sequential Agent)"
+        return tool_or_agent.name + ' (Sequential Agent)'
       elif isinstance(tool_or_agent, LoopAgent):
-        return tool_or_agent.name + f" (Loop Agent)"
+        return tool_or_agent.name + ' (Loop Agent)'
       elif isinstance(tool_or_agent, ParallelAgent):
-        return tool_or_agent.name + f" (Parallel Agent)"
+        return tool_or_agent.name + ' (Parallel Agent)'
       else:
         return tool_or_agent.name
     elif isinstance(tool_or_agent, BaseTool):
@@ -93,7 +101,7 @@ async def build_graph(graph: graphviz.Digraph, agent: BaseAgent, highlight_pairs
   def get_node_shape(tool_or_agent: Union[BaseAgent, BaseTool]):
     if isinstance(tool_or_agent, BaseAgent):
       return 'ellipse'
-      
+
     elif retrieval_tool_module_loaded and isinstance(
         tool_or_agent, BaseRetrievalTool
     ):
@@ -109,7 +117,7 @@ async def build_graph(graph: graphviz.Digraph, agent: BaseAgent, highlight_pairs
           tool_or_agent,
       )
       return 'cylinder'
-    
+
   def should_build_agent_cluster(tool_or_agent: Union[BaseAgent, BaseTool]):
     if isinstance(tool_or_agent, BaseAgent):
       if isinstance(tool_or_agent, SequentialAgent):
@@ -135,42 +143,54 @@ async def build_graph(graph: graphviz.Digraph, agent: BaseAgent, highlight_pairs
           tool_or_agent,
       )
       return False
-    
-  def build_cluster(child: graphviz.Digraph, agent: BaseAgent, name: str):
-    if isinstance(agent, LoopAgent):        
+
+  async def build_cluster(child: graphviz.Digraph, agent: BaseAgent, name: str):
+    if isinstance(agent, LoopAgent):
       # Draw the edge from the parent agent to the first sub-agent
-      draw_edge(parent_agent.name, agent.sub_agents[0].name)
+      if parent_agent:
+        draw_edge(parent_agent.name, agent.sub_agents[0].name)
       length = len(agent.sub_agents)
-      currLength = 0
+      curr_length = 0
       # Draw the edges between the sub-agents
-      for sub_agent_int_sequential in agent.sub_agents:                
-        build_graph(child, sub_agent_int_sequential, highlight_pairs)
+      for sub_agent_int_sequential in agent.sub_agents:
+        await build_graph(child, sub_agent_int_sequential, highlight_pairs)
         # Draw the edge between the current sub-agent and the next one
         # If it's the last sub-agent, draw an edge to the first one to indicating a loop
-        draw_edge(agent.sub_agents[currLength].name, agent.sub_agents[0 if currLength == length - 1 else currLength+1 ].name)
-        currLength += 1
+        draw_edge(
+            agent.sub_agents[curr_length].name,
+            agent.sub_agents[
+                0 if curr_length == length - 1 else curr_length + 1
+            ].name,
+        )
+        curr_length += 1
     elif isinstance(agent, SequentialAgent):
       # Draw the edge from the parent agent to the first sub-agent
-      draw_edge(parent_agent.name, agent.sub_agents[0].name)
+      if parent_agent:
+        draw_edge(parent_agent.name, agent.sub_agents[0].name)
       length = len(agent.sub_agents)
-      currLength = 0
+      curr_length = 0
 
       # Draw the edges between the sub-agents
       for sub_agent_int_sequential in agent.sub_agents:
-        build_graph(child, sub_agent_int_sequential, highlight_pairs)
+        await build_graph(child, sub_agent_int_sequential, highlight_pairs)
         # Draw the edge between the current sub-agent and the next one
         # If it's the last sub-agent, don't draw an edge to avoid a loop
-        draw_edge(agent.sub_agents[currLength].name, agent.sub_agents[currLength+1].name) if currLength != length - 1 else None
-        currLength += 1
+        if curr_length != length - 1:
+          draw_edge(
+              agent.sub_agents[curr_length].name,
+              agent.sub_agents[curr_length + 1].name,
+          )
+        curr_length += 1
 
-    elif isinstance(agent, ParallelAgent):          
+    elif isinstance(agent, ParallelAgent):
       # Draw the edge from the parent agent to every sub-agent
       for sub_agent in agent.sub_agents:
-        build_graph(child, sub_agent, highlight_pairs)
-        draw_edge(parent_agent.name, sub_agent.name)
+        await build_graph(child, sub_agent, highlight_pairs)
+        if parent_agent:
+          draw_edge(parent_agent.name, sub_agent.name)
     else:
       for sub_agent in agent.sub_agents:
-        build_graph(child, sub_agent, highlight_pairs)
+        await build_graph(child, sub_agent, highlight_pairs)
         draw_edge(agent.name, sub_agent.name)
 
     child.attr(
@@ -180,19 +200,20 @@ async def build_graph(graph: graphviz.Digraph, agent: BaseAgent, highlight_pairs
         fontcolor=light_gray,
     )
 
-  def draw_node(tool_or_agent: Union[BaseAgent, BaseTool]):
+  async def draw_node(tool_or_agent: Union[BaseAgent, BaseTool]):
     name = get_node_name(tool_or_agent)
     shape = get_node_shape(tool_or_agent)
     caption = get_node_caption(tool_or_agent)
-    asCluster = should_build_agent_cluster(tool_or_agent)
-    child = None
+    as_cluster = should_build_agent_cluster(tool_or_agent)
     if highlight_pairs:
       for highlight_tuple in highlight_pairs:
         if name in highlight_tuple:
           # if in highlight, draw highlight node
-          if asCluster:
-            cluster = graphviz.Digraph(name='cluster_' + name)  # adding "cluster_" to the name makes the graph render as a cluster subgraph
-            build_cluster(cluster, agent, name)
+          if as_cluster:
+            cluster = graphviz.Digraph(
+                name='cluster_' + name
+            )  # adding "cluster_" to the name makes the graph render as a cluster subgraph
+            await build_cluster(cluster, agent, name)
             graph.subgraph(cluster)
           else:
             graph.node(
@@ -206,20 +227,22 @@ async def build_graph(graph: graphviz.Digraph, agent: BaseAgent, highlight_pairs
             )
           return
     # if not in highlight, draw non-highlight node
-    if asCluster:
-        
-      cluster = graphviz.Digraph(name='cluster_' + name)  # adding "cluster_" to the name makes the graph render as a cluster subgraph
-      build_cluster(cluster, agent, name)
+    if as_cluster:
+
+      cluster = graphviz.Digraph(
+          name='cluster_' + name
+      )  # adding "cluster_" to the name makes the graph render as a cluster subgraph
+      await build_cluster(cluster, agent, name)
       graph.subgraph(cluster)
-              
+
     else:
       graph.node(
-        name,
-        caption,
-        shape=shape,
-        style='rounded',
-        color=light_gray,
-        fontcolor=light_gray,
+          name,
+          caption,
+          shape=shape,
+          style='rounded',
+          color=light_gray,
+          fontcolor=light_gray,
       )
 
       return
@@ -234,21 +257,28 @@ async def build_graph(graph: graphviz.Digraph, agent: BaseAgent, highlight_pairs
           graph.edge(from_name, to_name, color=light_green, dir='back')
           return
     # if no need to highlight, color gray
-    if (should_build_agent_cluster(agent)): 
-      
-      graph.edge(from_name, to_name, color=light_gray, )
+    if should_build_agent_cluster(agent):
+
+      graph.edge(
+          from_name,
+          to_name,
+          color=light_gray,
+      )
     else:
       graph.edge(from_name, to_name, arrowhead='none', color=light_gray)
 
-  draw_node(agent)
+  await draw_node(agent)
   for sub_agent in agent.sub_agents:
-      
-    build_graph(graph, sub_agent, highlight_pairs, agent)
-    if (not should_build_agent_cluster(sub_agent) and not should_build_agent_cluster(agent)): # This is to avoid making a node for a Workflow Agent 
+    await build_graph(graph, sub_agent, highlight_pairs, agent)
+    if not should_build_agent_cluster(
+        sub_agent
+    ) and not should_build_agent_cluster(
+        agent
+    ):  # This is to avoid making a node for a Workflow Agent
       draw_edge(agent.name, sub_agent.name)
   if isinstance(agent, LlmAgent):
     for tool in await agent.canonical_tools():
-      draw_node(tool)
+      await draw_node(tool)
       draw_edge(agent.name, get_node_name(tool))
 
 
