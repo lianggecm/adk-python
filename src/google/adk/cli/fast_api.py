@@ -55,9 +55,9 @@ from ..agents.live_request_queue import LiveRequest
 from ..agents.live_request_queue import LiveRequestQueue
 from ..agents.llm_agent import Agent
 from ..agents.run_config import StreamingMode
+from ..artifacts.database_artifact_service import DatabaseArtifactService
 from ..artifacts.gcs_artifact_service import GcsArtifactService
 from ..artifacts.in_memory_artifact_service import InMemoryArtifactService
-from ..artifacts.database_artifact_service import DatabaseArtifactService
 from ..errors.not_found_error import NotFoundError
 from ..evaluation.eval_case import EvalCase
 from ..evaluation.eval_case import SessionInput
@@ -87,6 +87,28 @@ from .utils.agent_loader import AgentLoader
 logger = logging.getLogger("google_adk." + __name__)
 
 _EVAL_SET_FILE_EXTENSION = ".evalset.json"
+
+
+# Helper functions for managing environment variables
+def _set_temporary_env_vars(
+    env_vars_to_set: dict[str, str],
+) -> dict[str, Optional[str]]:
+  """Sets temporary environment variables and returns their original values."""
+  original_env_vars: dict[str, Optional[str]] = {}
+  for key, value in env_vars_to_set.items():
+    original_env_vars[key] = os.environ.get(key)
+    os.environ[key] = value
+  return original_env_vars
+
+
+def _restore_env_vars(original_env_vars: dict[str, Optional[str]]):
+  """Restores environment variables to their original values."""
+  for key, original_value in original_env_vars.items():
+    if original_value is None:
+      if key in os.environ:
+        del os.environ[key]
+    else:
+      os.environ[key] = original_value
 
 
 class ApiServerSpanExporter(export.SpanExporter):
@@ -158,6 +180,10 @@ class AgentRunRequest(common.BaseModel):
   session_id: str
   new_message: types.Content
   streaming: bool = False
+  api_key: Optional[str] = None
+  api_base: Optional[str] = None
+  model_type: Optional[str] = None
+  model_name: Optional[str] = None
 
 
 class AddSessionToEvalSetRequest(common.BaseModel):
@@ -757,17 +783,36 @@ def get_fast_api_app(
     )
     if not session:
       raise HTTPException(status_code=404, detail="Session not found")
-    runner = await _get_runner_async(req.app_name)
-    events = [
-        event
-        async for event in runner.run_async(
-            user_id=req.user_id,
-            session_id=req.session_id,
-            new_message=req.new_message,
-        )
-    ]
-    logger.info("Generated %s events in agent run: %s", len(events), events)
-    return events
+
+    temp_env_vars: dict[str, str] = {}
+    if req.api_key is not None:
+      temp_env_vars["API_KEY"] = req.api_key
+    if req.api_base is not None:
+      temp_env_vars["API_BASE"] = req.api_base
+    if req.model_type is not None:
+      temp_env_vars["MODEL_TYPE"] = req.model_type
+    if req.model_name is not None:
+      temp_env_vars["MODEL_NAME"] = req.model_name
+
+    original_vars: dict[str, Optional[str]] = {}
+    try:
+      if temp_env_vars:
+        original_vars = _set_temporary_env_vars(temp_env_vars)
+
+      runner = await _get_runner_async(req.app_name)
+      events = [
+          event
+          async for event in runner.run_async(
+              user_id=req.user_id,
+              session_id=req.session_id,
+              new_message=req.new_message,
+          )
+      ]
+      logger.info("Generated %s events in agent run: %s", len(events), events)
+      return events
+    finally:
+      if original_vars:
+        _restore_env_vars(original_vars)
 
   @app.post("/run_sse")
   async def agent_run_sse(req: AgentRunRequest) -> StreamingResponse:
@@ -778,31 +823,51 @@ def get_fast_api_app(
     if not session:
       raise HTTPException(status_code=404, detail="Session not found")
 
-    # Convert the events to properly formatted SSE
-    async def event_generator():
-      try:
-        stream_mode = StreamingMode.SSE if req.streaming else StreamingMode.NONE
-        runner = await _get_runner_async(req.app_name)
-        async for event in runner.run_async(
-            user_id=req.user_id,
-            session_id=req.session_id,
-            new_message=req.new_message,
-            run_config=RunConfig(streaming_mode=stream_mode),
-        ):
-          # Format as SSE data
-          sse_event = event.model_dump_json(exclude_none=True, by_alias=True)
-          logger.info("Generated event in agent run streaming: %s", sse_event)
-          yield f"data: {sse_event}\n\n"
-      except Exception as e:
-        logger.exception("Error in event_generator: %s", e)
-        # You might want to yield an error event here
-        yield f'data: {{"error": "{str(e)}"}}\n\n'
+    temp_env_vars: dict[str, str] = {}
+    if req.api_key is not None:
+      temp_env_vars["API_KEY"] = req.api_key
+    if req.api_base is not None:
+      temp_env_vars["API_BASE"] = req.api_base
+    if req.model_type is not None:
+      temp_env_vars["MODEL_TYPE"] = req.model_type
+    if req.model_name is not None:
+      temp_env_vars["MODEL_NAME"] = req.model_name
 
-    # Returns a streaming response with the proper media type for SSE
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-    )
+    original_vars: dict[str, Optional[str]] = {}
+    try:
+      if temp_env_vars:
+        original_vars = _set_temporary_env_vars(temp_env_vars)
+
+      # Convert the events to properly formatted SSE
+      async def event_generator():
+        try:
+          stream_mode = (
+              StreamingMode.SSE if req.streaming else StreamingMode.NONE
+          )
+          runner = await _get_runner_async(req.app_name)
+          async for event in runner.run_async(
+              user_id=req.user_id,
+              session_id=req.session_id,
+              new_message=req.new_message,
+              run_config=RunConfig(streaming_mode=stream_mode),
+          ):
+            # Format as SSE data
+            sse_event = event.model_dump_json(exclude_none=True, by_alias=True)
+            logger.info("Generated event in agent run streaming: %s", sse_event)
+            yield f"data: {sse_event}\n\n"
+        except Exception as e:
+          logger.exception("Error in event_generator: %s", e)
+          # You might want to yield an error event here
+          yield f'data: {{"error": "{str(e)}"}}\n\n'
+
+      # Returns a streaming response with the proper media type for SSE
+      return StreamingResponse(
+          event_generator(),
+          media_type="text/event-stream",
+      )
+    finally:
+      if original_vars:
+        _restore_env_vars(original_vars)
 
   @app.get(
       "/apps/{app_name}/users/{user_id}/sessions/{session_id}/events/{event_id}/graph",

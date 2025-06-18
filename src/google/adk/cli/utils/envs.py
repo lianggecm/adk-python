@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import annotations
+
 import logging
 import os
 
@@ -43,7 +45,7 @@ def load_dotenv_for_agent(
   )
   dotenv_file_path = _walk_to_root_until_found(starting_folder, filename)
   if dotenv_file_path:
-    load_dotenv(dotenv_file_path, override=True, verbose=True)
+    load_dotenv(dotenv_file_path, override=False, verbose=True)
     logger.info(
         'Loaded %s file for %s at %s',
         filename,
